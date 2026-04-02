@@ -10,6 +10,7 @@ export default function Home() {
       <nav className="nav">
         <Link href="/facilities" className="nav-link">Facilities</Link>
         <Link href="/teams" className="nav-link">Teams</Link>
+        <Link href="/players" className="nav-link">Players</Link>
         <Link href="/schedule" className="nav-link">Schedule</Link>
         <Link href="/settings" className="nav-link">Settings</Link>
       </nav>
