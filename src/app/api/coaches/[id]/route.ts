@@ -55,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE /api/coaches/[id]
-export async function DELETE(request: NextRequest, { params: { params } }) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const data = loadDb();
     const coachIndex = (data.coaches || []).findIndex((c: any) => c.id === parseInt(params.id));

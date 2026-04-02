@@ -16,14 +16,14 @@ function getDayName(date: Date): string {
 }
 
 // Check if a time slot conflicts with facility availability rules
-function isFacilityAvailable(facility: any, startTime: Date): boolean {
+function isFacilityAvailable(dbData: any, facility: any, startTime: Date): boolean {
   const dayName = getDayName(startTime);
   const hour = startTime.getHours();
   const minutes = startTime.getMinutes();
   const timeStr = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   
   // Check availability rules for this facility
-  const rules = (data.availability_rules || []).filter((r: any) => 
+  const rules = (dbData.availability_rules || []).filter((r: any) => 
     r.facility_id === facility.id && r.is_active !== 0
   );
   
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
       }
       
       // Check facility availability
-      if (!isFacilityAvailable(facility, slot.start)) {
+      if (!isFacilityAvailable(data, facility, slot.start)) {
         conflicts++;
         continue;
       }

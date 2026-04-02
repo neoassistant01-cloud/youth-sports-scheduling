@@ -108,6 +108,8 @@ export default function FacilitiesPage() {
         <Link href="/" className="nav-link">Home</Link>
         <Link href="/facilities" className="nav-link active">Facilities</Link>
         <Link href="/teams" className="nav-link">Teams</Link>
+        <Link href="/players" className="nav-link">Players</Link>
+        <Link href="/coaches" className="nav-link">Coaches</Link>
         <Link href="/schedule" className="nav-link">Schedule</Link>
         <Link href="/settings" className="nav-link">Settings</Link>
       </nav>
