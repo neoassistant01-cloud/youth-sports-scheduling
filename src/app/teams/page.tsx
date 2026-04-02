@@ -14,6 +14,14 @@ interface Team {
   coach_phone: string | null;
 }
 
+interface Coach {
+  id: number;
+  team_id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
 export default function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +37,13 @@ export default function TeamsPage() {
     coachPhone: ''
   });
 
+  // Multi-coach modal state
+  const [showCoachesModal, setShowCoachesModal] = useState(false);
+  const [selectedTeamForCoaches, setSelectedTeamForCoaches] = useState<Team | null>(null);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [coachFormData, setCoachFormData] = useState({ name: '', email: '', phone: '' });
+  const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
+
   useEffect(() => {
     fetchTeams();
   }, []);
@@ -42,6 +57,16 @@ export default function TeamsPage() {
       console.error('Error fetching teams:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchCoaches(teamId: number) {
+    try {
+      const res = await fetch(`/api/coaches?teamId=${teamId}`);
+      const data = await res.json();
+      setCoaches(data);
+    } catch (error) {
+      console.error('Error fetching coaches:', error);
     }
   }
 
@@ -94,6 +119,52 @@ export default function TeamsPage() {
     setShowModal(true);
   }
 
+  function openCoachesModal(team: Team) {
+    setSelectedTeamForCoaches(team);
+    setShowCoachesModal(true);
+    fetchCoaches(team.id);
+  }
+
+  async function handleCoachSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedTeamForCoaches) return;
+
+    const url = editingCoach ? `/api/coaches/${editingCoach.id}` : '/api/coaches';
+    const method = editingCoach ? 'PUT' : 'POST';
+    
+    const payload = {
+      ...coachFormData,
+      teamId: selectedTeamForCoaches.id
+    };
+    
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (res.ok) {
+        setCoachFormData({ name: '', email: '', phone: '' });
+        setEditingCoach(null);
+        fetchCoaches(selectedTeamForCoaches.id);
+      }
+    } catch (error) {
+      console.error('Error saving coach:', error);
+    }
+  }
+
+  async function handleCoachDelete(id: number) {
+    if (!confirm('Are you sure you want to remove this coach?')) return;
+    
+    try {
+      await fetch(`/api/coaches/${id}`, { method: 'DELETE' });
+      if (selectedTeamForCoaches) fetchCoaches(selectedTeamForCoaches.id);
+    } catch (error) {
+      console.error('Error deleting coach:', error);
+    }
+  }
+
   if (loading) {
     return <div>Loading...</div>;
   }
@@ -141,11 +212,19 @@ export default function TeamsPage() {
               {team.coach_email && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginTop: '0.5rem' }}>{team.coach_email}</p>
               )}
+              <button 
+                className="btn btn-secondary" 
+                style={{ marginTop: '0.75rem', fontSize: '0.75rem' }}
+                onClick={() => openCoachesModal(team)}
+              >
+                + Manage Coaches
+              </button>
             </div>
           ))}
         </div>
       )}
 
+      {/* Team Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -241,6 +320,100 @@ export default function TeamsPage() {
                 <button type="submit" className="btn btn-primary">{editingTeam ? 'Update' : 'Add'} Team</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Coaches Modal */}
+      {showCoachesModal && selectedTeamForCoaches && (
+        <div className="modal-overlay" onClick={() => setShowCoachesModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Coaches - {selectedTeamForCoaches.name}</h2>
+              <button className="modal-close" onClick={() => setShowCoachesModal(false)}>&times;</button>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--secondary)', marginBottom: '0.75rem' }}>
+                Add additional coaches for this team (e.g., assistant coaches, team managers).
+              </p>
+              <form onSubmit={handleCoachSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Coach name"
+                    value={coachFormData.name}
+                    onChange={e => setCoachFormData({ ...coachFormData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="Email (optional)"
+                    value={coachFormData.email}
+                    onChange={e => setCoachFormData({ ...coachFormData, email: e.target.value })}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input
+                    type="tel"
+                    className="form-input"
+                    placeholder="Phone (optional)"
+                    value={coachFormData.phone}
+                    onChange={e => setCoachFormData({ ...coachFormData, phone: e.target.value })}
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary">{editingCoach ? 'Update' : 'Add'}</button>
+              </form>
+            </div>
+
+            {coaches.length === 0 ? (
+              <p style={{ color: 'var(--secondary)', textAlign: 'center', padding: '1rem' }}>No additional coaches yet.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coaches.map(coach => (
+                    <tr key={coach.id}>
+                      <td><strong>{coach.name}</strong></td>
+                      <td>{coach.email || '-'}</td>
+                      <td>{coach.phone || '-'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                            onClick={() => {
+                              setEditingCoach(coach);
+                              setCoachFormData({ name: coach.name, email: coach.email || '', phone: coach.phone || '' });
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            className="btn btn-danger" 
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                            onClick={() => handleCoachDelete(coach.id)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
