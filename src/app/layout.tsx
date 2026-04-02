@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { RegistrationProvider } from '@/context/RegistrationContext';
 
 export const metadata: Metadata = {
   title: 'GameOn Scheduler',
@@ -14,9 +15,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="container">
-          {children}
-        </div>
+        <RegistrationProvider>
+          <div className="container">
+            {children}
+          </div>
+        </RegistrationProvider>
       </body>
     </html>
   );

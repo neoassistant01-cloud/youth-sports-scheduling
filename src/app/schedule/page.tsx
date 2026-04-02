@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Calendar from '@/components/Calendar';
 
 interface Facility {
   id: number;
@@ -19,7 +20,7 @@ interface Schedule {
   facility_name?: string;
   home_team_id: number;
   home_team_name?: string;
-  away_team_id: number;
+  away_team_id: number | null;
   away_team_name?: string;
   event_type: string;
   title: string;
@@ -27,7 +28,7 @@ interface Schedule {
   end_time: number;
   is_published: number;
   has_conflict: number;
-  conflict_reason: string;
+  conflict_reason?: string | null;
 }
 
 export default function SchedulePage() {
@@ -39,6 +40,9 @@ export default function SchedulePage() {
   const [selectedFacility, setSelectedFacility] = useState<number | ''>('');
   const [selectedTeams, setSelectedTeams] = useState<number[]>([]);
   const [gameType, setGameType] = useState<'practice' | 'game'>('practice');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [selectedEvent, setSelectedEvent] = useState<Schedule | null>(null);
+  const [notifying, setNotifying] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -117,6 +121,27 @@ export default function SchedulePage() {
       loadData();
     } catch (error) {
       console.error('Error deleting schedule:', error);
+    }
+  }
+
+  async function notifyParents(schedule: Schedule) {
+    setNotifying(true);
+    try {
+      const res = await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: schedule.event_type,
+          scheduleIds: [schedule.id]
+        })
+      });
+      const data = await res.json();
+      alert(data.message || 'Notification sent!');
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      alert('Failed to send notification');
+    } finally {
+      setNotifying(false);
     }
   }
 
@@ -207,12 +232,35 @@ export default function SchedulePage() {
       </div>
 
       <div className="card">
-        <h3 style={{ fontWeight: 600, marginBottom: '1rem' }}>Scheduled Events</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ fontWeight: 600, margin: 0 }}>Scheduled Events</h3>
+          <div style={{ display: 'flex', gap: '0.25rem' }}>
+            <button 
+              className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}
+              onClick={() => setViewMode('list')}
+            >
+              List
+            </button>
+            <button 
+              className={`btn ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}
+              onClick={() => setViewMode('calendar')}
+            >
+              Calendar
+            </button>
+          </div>
+        </div>
         
         {schedules.length === 0 ? (
           <div className="empty-state">
             <p>No schedules yet. Generate your first schedule above.</p>
           </div>
+        ) : viewMode === 'calendar' ? (
+          <Calendar 
+            schedules={schedules} 
+            onEventClick={(event) => setSelectedEvent(event)}
+          />
         ) : (
           <table>
             <thead>
@@ -275,6 +323,70 @@ export default function SchedulePage() {
           </table>
         )}
       </div>
+
+      {/* Event Detail Modal */}
+      {selectedEvent && (
+        <div className="modal-overlay" onClick={() => setSelectedEvent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Event Details</h2>
+              <button className="modal-close" onClick={() => setSelectedEvent(null)}>&times;</button>
+            </div>
+            <div style={{ padding: '1rem' }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginBottom: '0.25rem' }}>Event</div>
+                <div style={{ fontWeight: 600 }}>{selectedEvent.title}</div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginBottom: '0.25rem' }}>Type</div>
+                <span className="badge" style={{ 
+                  background: selectedEvent.event_type === 'game' ? '#dbeafe' : '#fce7f3',
+                  color: selectedEvent.event_type === 'game' ? '#1e40af' : '#9d174d'
+                }}>
+                  {selectedEvent.event_type}
+                </span>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginBottom: '0.25rem' }}>Date & Time</div>
+                <div>{formatDate(selectedEvent.start_time)}</div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginBottom: '0.25rem' }}>Teams</div>
+                <div>{selectedEvent.home_team_name || 'TBD'}{selectedEvent.away_team_name && ` vs ${selectedEvent.away_team_name}`}</div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginBottom: '0.25rem' }}>Facility</div>
+                <div>{selectedEvent.facility_name || 'TBD'}</div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginBottom: '0.25rem' }}>Status</div>
+                {selectedEvent.has_conflict ? (
+                  <span className="badge badge-error">Conflict</span>
+                ) : selectedEvent.is_published ? (
+                  <span className="badge badge-success">Published</span>
+                ) : (
+                  <span className="badge badge-warning">Draft</span>
+                )}
+              </div>
+              {selectedEvent.is_published === 1 && (
+                <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ width: '100%' }}
+                    onClick={() => notifyParents(selectedEvent)}
+                    disabled={notifying}
+                  >
+                    {notifying ? 'Sending...' : '📧 Notify Parents'}
+                  </button>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginTop: '0.5rem', textAlign: 'center' }}>
+                    Send email notification to parents of affected players
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

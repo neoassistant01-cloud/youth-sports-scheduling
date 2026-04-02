@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "date-fns": "^4.1.0",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.29.5",
     "next": "^14.2.0",
