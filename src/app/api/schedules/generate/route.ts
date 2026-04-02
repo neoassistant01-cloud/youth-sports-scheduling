@@ -66,6 +66,21 @@ function hasTeamConflict(schedules: any[], teamId: number, startTime: number, en
   });
 }
 
+// Check if team has had enough rest days (min 1 day between events)
+function hasRestDayConflict(schedules: any[], teamId: number, startTime: number): boolean {
+  const teamEvents = schedules
+    .filter((s: any) => s.home_team_id === teamId || s.away_team_id === teamId)
+    .sort((a: any, b: any) => a.start_time - b.start_time);
+  
+  if (teamEvents.length === 0) return false;
+  
+  const lastEvent = teamEvents[teamEvents.length - 1];
+  const daysBetween = (startTime - lastEvent.end_time) / (1000 * 60 * 60 * 24);
+  
+  // Require at least 1 day rest
+  return daysBetween < 1;
+}
+
 function generateScheduleSlots(numEvents: number, startHour: number = 16) {
   const slots: { start: Date; end: Date }[] = [];
   const startDate = new Date();
@@ -147,6 +162,15 @@ export async function POST(request: NextRequest) {
       const team2Conflict = awayTeamId ? hasTeamConflict(data.schedules, awayTeamId, startTime, endTime) : false;
       
       if (team1Conflict || team2Conflict) {
+        conflicts++;
+        continue;
+      }
+      
+      // Check rest days - ensure at least 1 day between events
+      const restDay1Conflict = homeTeamId ? hasRestDayConflict(data.schedules, homeTeamId, startTime) : false;
+      const restDay2Conflict = awayTeamId ? hasRestDayConflict(data.schedules, awayTeamId, startTime) : false;
+      
+      if (restDay1Conflict || restDay2Conflict) {
         conflicts++;
         continue;
       }
