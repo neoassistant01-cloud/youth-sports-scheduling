@@ -15,18 +15,70 @@ function getDayName(date: Date): string {
   return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
 }
 
-function generateScheduleSlots(numEvents: number) {
+// Check if a time slot conflicts with facility availability rules
+function isFacilityAvailable(facility: any, startTime: Date): boolean {
+  const dayName = getDayName(startTime);
+  const hour = startTime.getHours();
+  const minutes = startTime.getMinutes();
+  const timeStr = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  
+  // Check availability rules for this facility
+  const rules = (data.availability_rules || []).filter((r: any) => 
+    r.facility_id === facility.id && r.is_active !== 0
+  );
+  
+  if (rules.length === 0) {
+    // No rules = assume always available
+    return true;
+  }
+  
+  const matchingRule = rules.find((r: any) => 
+    r.day_of_week === dayName && timeStr >= r.start_time && timeStr < r.end_time
+  );
+  
+  return !!matchingRule;
+}
+
+// Check if a slot conflicts with existing schedules
+function hasTimeConflict(schedules: any[], facilityId: number, startTime: number, endTime: number, excludeIds: number[] = []): boolean {
+  return schedules.some((s: any) => {
+    if (excludeIds.includes(s.id)) return false;
+    if (s.facility_id !== facilityId) return false;
+    
+    const existingStart = s.start_time;
+    const existingEnd = s.end_time;
+    
+    // Check for overlap
+    return (startTime < existingEnd && endTime > existingStart);
+  });
+}
+
+// Check if a team already has an event at this time
+function hasTeamConflict(schedules: any[], teamId: number, startTime: number, endTime: number, excludeIds: number[] = []): boolean {
+  return schedules.some((s: any) => {
+    if (excludeIds.includes(s.id)) return false;
+    if (s.home_team_id !== teamId && s.away_team_id !== teamId) return false;
+    
+    const existingStart = s.start_time;
+    const existingEnd = s.end_time;
+    
+    return (startTime < existingEnd && endTime > existingStart);
+  });
+}
+
+function generateScheduleSlots(numEvents: number, startHour: number = 16) {
   const slots: { start: Date; end: Date }[] = [];
   const startDate = new Date();
   startDate.setDate(startDate.getDate() + 1);
-  startDate.setHours(16, 0, 0, 0);
+  startDate.setHours(startHour, 0, 0, 0);
   const preferredDays = ['saturday', 'monday', 'wednesday'];
-  for (let dayOffset = 0; dayOffset < 14 && slots.length < numEvents; dayOffset++) {
+  
+  for (let dayOffset = 0; dayOffset < 28 && slots.length < numEvents; dayOffset++) {
     const checkDate = new Date(startDate);
     checkDate.setDate(checkDate.getDate() + dayOffset);
     if (preferredDays.includes(getDayName(checkDate))) {
       const slotDate = new Date(checkDate);
-      slotDate.setHours(16 + (slots.length % 3), 0, 0, 0);
+      slotDate.setHours(startHour + (slots.length % 3), 0, 0, 0);
       const endDate = new Date(slotDate);
       endDate.setHours(endDate.getHours() + 1);
       slots.push({ start: slotDate, end: endDate });
@@ -41,36 +93,105 @@ export async function POST(request: NextRequest) {
   try {
     const data = loadDb();
     const body = await request.json();
-    const { facilityId, teamIds, eventType } = body;
+    const { facilityId, teamIds, eventType, startHour } = body;
+    
     if (!facilityId || !teamIds || teamIds.length === 0) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields: facilityId, teamIds' }, { status: 400 });
     }
-    const slots = generateScheduleSlots(teamIds.length * 2);
+    
+    const facility = (data.facilities || []).find((f: any) => f.id === facilityId);
+    if (!facility) {
+      return NextResponse.json({ error: 'Facility not found' }, { status: 404 });
+    }
+    
+    const numEvents = eventType === 'game' ? Math.ceil(teamIds.length / 2) : teamIds.length;
+    const slots = generateScheduleSlots(numEvents * 2, startHour || 16);
+    
     data.schedules = data.schedules || [];
-    const createdIds: number[] = [];
-    for (let i = 0; i < Math.min(slots.length, teamIds.length); i++) {
+    const createdSchedules: any[] = [];
+    let conflicts = 0;
+    
+    for (let i = 0; i < slots.length && createdSchedules.length < numEvents; i++) {
       const slot = slots[i];
+      const startTime = slot.start.getTime();
+      const endTime = slot.end.getTime();
+      
+      // Determine which teams for this slot
+      let homeTeamIdx: number, awayTeamIdx: number | null;
+      
+      if (eventType === 'game' && teamIds.length > 1) {
+        // For games: pair teams (0 vs 1, 2 vs 3, etc.)
+        homeTeamIdx = createdSchedules.length * 2;
+        awayTeamIdx = homeTeamIdx + 1;
+        
+        if (homeTeamIdx >= teamIds.length) break;
+        if (awayTeamIdx >= teamIds.length) awayTeamIdx = null;
+      } else {
+        // For practices: each team gets their own slot
+        homeTeamIdx = createdSchedules.length % teamIds.length;
+        awayTeamIdx = null;
+      }
+      
+      const homeTeamId = teamIds[homeTeamIdx];
+      const awayTeamId = awayTeamIdx !== null ? teamIds[awayTeamIdx] : null;
+      
+      // Check for conflicts with existing schedules
+      const existingAtFacility = hasTimeConflict(data.schedules, facilityId, startTime, endTime);
+      if (existingAtFacility) {
+        conflicts++;
+        continue;
+      }
+      
+      // Check team conflicts
+      const team1Conflict = homeTeamId ? hasTeamConflict(data.schedules, homeTeamId, startTime, endTime) : false;
+      const team2Conflict = awayTeamId ? hasTeamConflict(data.schedules, awayTeamId, startTime, endTime) : false;
+      
+      if (team1Conflict || team2Conflict) {
+        conflicts++;
+        continue;
+      }
+      
+      // Check facility availability
+      if (!isFacilityAvailable(facility, slot.start)) {
+        conflicts++;
+        continue;
+      }
+      
+      const maxId = data.schedules.reduce((max: number, s: any) => Math.max(max, s.id), 0) || 0;
+      
       const schedule = {
-        id: (data.schedules.length || 0) + i + 1,
+        id: maxId + createdSchedules.length + 1,
         facility_id: facilityId,
-        home_team_id: teamIds[i % teamIds.length],
-        away_team_id: eventType === 'game' && teamIds.length > 1 ? teamIds[(i + 1) % teamIds.length] : null,
+        home_team_id: homeTeamId,
+        away_team_id: awayTeamId,
         event_type: eventType || 'practice',
-        title: eventType === 'game' ? `Game ${i + 1}` : `Practice ${i + 1}`,
-        start_time: slot.start.getTime(),
-        end_time: slot.end.getTime(),
+        title: eventType === 'game' 
+          ? `Game: ${(data.teams || []).find((t: any) => t.id === homeTeamId)?.name || 'Team ' + homeTeamId} vs ${awayTeamId ? ((data.teams || []).find((t: any) => t.id === awayTeamId)?.name || 'Team ' + awayTeamId) : 'TBD'}`
+          : `Practice: ${(data.teams || []).find((t: any) => t.id === homeTeamId)?.name || 'Team ' + homeTeamId}`,
+        start_time: startTime,
+        end_time: endTime,
         is_published: 0,
         has_conflict: 0,
         conflict_reason: null,
         created_at: Date.now(),
         updated_at: Date.now()
       };
-      data.schedules.push(schedule);
-      createdIds.push(schedule.id);
+      
+      createdSchedules.push(schedule);
     }
+    
+    // Save all created schedules
+    data.schedules.push(...createdSchedules);
     saveDb(data);
-    return NextResponse.json({ message: 'Schedules generated', count: createdIds.length, scheduleIds: createdIds });
+    
+    return NextResponse.json({ 
+      message: createdSchedules.length > 0 ? 'Schedules generated' : 'No schedules created',
+      count: createdSchedules.length,
+      skippedConflicts: conflicts,
+      schedules: createdSchedules.map(s => ({ id: s.id, title: s.title, start_time: s.start_time }))
+    });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to generate' }, { status: 500 });
+    console.error('Schedule generation error:', error);
+    return NextResponse.json({ error: 'Failed to generate schedule' }, { status: 500 });
   }
 }
