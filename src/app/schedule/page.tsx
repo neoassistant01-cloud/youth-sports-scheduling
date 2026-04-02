@@ -31,6 +31,16 @@ interface Schedule {
   conflict_reason?: string | null;
 }
 
+interface EditForm {
+  title: string;
+  eventType: string;
+  facilityId: number;
+  homeTeamId: number;
+  awayTeamId: number | null;
+  startTime: string;
+  endTime: string;
+}
+
 export default function SchedulePage() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -43,6 +53,32 @@ export default function SchedulePage() {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [selectedEvent, setSelectedEvent] = useState<Schedule | null>(null);
   const [notifying, setNotifying] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<Schedule | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({
+    title: '',
+    eventType: 'practice',
+    facilityId: 0,
+    homeTeamId: 0,
+    awayTeamId: null,
+    startTime: '',
+    endTime: ''
+  });
+  const [saving, setSaving] = useState(false);
+
+  // Quick add form state
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({
+    title: '',
+    eventType: 'practice',
+    facilityId: 0,
+    homeTeamId: 0,
+    awayTeamId: null as number | null,
+    date: '',
+    startTime: '',
+    endTime: ''
+  });
+  const [quickAdding, setQuickAdding] = useState(false);
+  const [quickAddError, setQuickAddError] = useState('');
 
   useEffect(() => {
     loadData();
@@ -101,6 +137,75 @@ export default function SchedulePage() {
     }
   }
 
+  async function handleQuickAdd() {
+    setQuickAddError('');
+    
+    if (!quickAddForm.title.trim()) {
+      setQuickAddError('Please enter an event title');
+      return;
+    }
+    if (!quickAddForm.facilityId) {
+      setQuickAddError('Please select a facility');
+      return;
+    }
+    if (!quickAddForm.homeTeamId) {
+      setQuickAddError('Please select a home team');
+      return;
+    }
+    if (!quickAddForm.date || !quickAddForm.startTime || !quickAddForm.endTime) {
+      setQuickAddError('Please fill in all date and time fields');
+      return;
+    }
+
+    const startDateTime = new Date(`${quickAddForm.date}T${quickAddForm.startTime}`);
+    const endDateTime = new Date(`${quickAddForm.date}T${quickAddForm.endTime}`);
+
+    if (endDateTime <= startDateTime) {
+      setQuickAddError('End time must be after start time');
+      return;
+    }
+
+    setQuickAdding(true);
+    try {
+      const res = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: quickAddForm.title,
+          eventType: quickAddForm.eventType,
+          facilityId: quickAddForm.facilityId,
+          homeTeamId: quickAddForm.homeTeamId,
+          awayTeamId: quickAddForm.awayTeamId,
+          startTime: startDateTime.getTime(),
+          endTime: endDateTime.getTime(),
+          isPublished: false
+        })
+      });
+
+      if (res.ok) {
+        setShowQuickAdd(false);
+        setQuickAddForm({
+          title: '',
+          eventType: 'practice',
+          facilityId: 0,
+          homeTeamId: 0,
+          awayTeamId: null,
+          date: '',
+          startTime: '',
+          endTime: ''
+        });
+        loadData();
+      } else {
+        const data = await res.json();
+        setQuickAddError(data.error || 'Failed to create event');
+      }
+    } catch (error) {
+      setQuickAddError('Failed to create event');
+    } finally {
+      setQuickAdding(false);
+    }
+  }
+
   async function togglePublish(id: number, currentStatus: number) {
     try {
       await fetch(`/api/schedules/${id}`, {
@@ -145,6 +250,60 @@ export default function SchedulePage() {
     }
   }
 
+  function startEdit(event: Schedule) {
+    const startDate = new Date(event.start_time);
+    const endDate = new Date(event.end_time);
+    setEditForm({
+      title: event.title,
+      eventType: event.event_type,
+      facilityId: event.facility_id,
+      homeTeamId: event.home_team_id,
+      awayTeamId: event.away_team_id,
+      startTime: formatDateTimeLocal(startDate),
+      endTime: formatDateTimeLocal(endDate)
+    });
+    setEditingEvent(event);
+  }
+
+  function formatDateTimeLocal(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  async function saveEdit() {
+    if (!editingEvent) return;
+    setSaving(true);
+    try {
+      const startTime = new Date(editForm.startTime).getTime();
+      const endTime = new Date(editForm.endTime).getTime();
+      
+      await fetch(`/api/schedules/${editingEvent.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editForm.title,
+          eventType: editForm.eventType,
+          facilityId: editForm.facilityId,
+          homeTeamId: editForm.homeTeamId,
+          awayTeamId: editForm.awayTeamId,
+          startTime,
+          endTime
+        })
+      });
+      setEditingEvent(null);
+      loadData();
+    } catch (error) {
+      console.error('Error saving edit:', error);
+      alert('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function formatDate(timestamp: number) {
     return new Date(timestamp).toLocaleString('en-US', {
       weekday: 'short',
@@ -173,8 +332,131 @@ export default function SchedulePage() {
         <Link href="/settings" className="nav-link">Settings</Link>
       </nav>
 
+      {/* Quick Add Section */}
+      <div className="card" style={{ marginBottom: '1rem', border: '2px solid var(--primary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showQuickAdd ? '1rem' : 0 }}>
+          <h3 style={{ fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            ⚡ Quick Add Event
+          </h3>
+          <button 
+            className="btn btn-primary" 
+            style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}
+            onClick={() => setShowQuickAdd(!showQuickAdd)}
+          >
+            {showQuickAdd ? '− Hide' : '+ Show'}
+          </button>
+        </div>
+
+        {showQuickAdd && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Event Title *</label>
+              <input 
+                type="text" 
+                className="form-input"
+                placeholder="e.g., Friday Practice"
+                value={quickAddForm.title}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, title: e.target.value }))}
+              />
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Type</label>
+              <select 
+                className="form-select"
+                value={quickAddForm.eventType}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, eventType: e.target.value }))}
+              >
+                <option value="practice">Practice</option>
+                <option value="game">Game</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Facility *</label>
+              <select 
+                className="form-select"
+                value={quickAddForm.facilityId}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, facilityId: parseInt(e.target.value) || 0 }))}
+              >
+                <option value={0}>Select...</option>
+                {facilities.map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Home Team *</label>
+              <select 
+                className="form-select"
+                value={quickAddForm.homeTeamId}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, homeTeamId: parseInt(e.target.value) || 0, awayTeamId: parseInt(e.target.value) === prev.awayTeamId ? null : prev.awayTeamId }))}
+              >
+                <option value={0}>Select...</option>
+                {teams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Away Team</label>
+              <select 
+                className="form-select"
+                value={quickAddForm.awayTeamId ?? ''}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, awayTeamId: e.target.value ? parseInt(e.target.value) : null }))}
+              >
+                <option value="">None</option>
+                {teams.filter(t => t.id !== quickAddForm.homeTeamId).map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Date *</label>
+              <input 
+                type="date" 
+                className="form-input"
+                value={quickAddForm.date}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, date: e.target.value }))}
+              />
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Start Time *</label>
+              <input 
+                type="time" 
+                className="form-input"
+                value={quickAddForm.startTime}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, startTime: e.target.value }))}
+              />
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">End Time *</label>
+              <input 
+                type="time" 
+                className="form-input"
+                value={quickAddForm.endTime}
+                onChange={e => setQuickAddForm(prev => ({ ...prev, endTime: e.target.value }))}
+              />
+            </div>
+          </div>
+        )}
+
+        {showQuickAdd && (
+          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              className="btn btn-primary" 
+              onClick={handleQuickAdd}
+              disabled={quickAdding}
+            >
+              {quickAdding ? 'Creating...' : '✓ Create Event'}
+            </button>
+            {quickAddError && (
+              <span style={{ color: 'var(--error)', fontSize: '0.875rem' }}>{quickAddError}</span>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ fontWeight: 600, marginBottom: '1rem' }}>Generate New Schedule</h3>
+        <h3 style={{ fontWeight: 600, marginBottom: '1rem' }}>Generate Schedule</h3>
         
         <div className="form-group">
           <label className="form-label">Select Facility</label>
@@ -203,7 +485,13 @@ export default function SchedulePage() {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Select Teams</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <label className="form-label" style={{ margin: 0 }}>Select Teams</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="button" className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setSelectedTeams(teams.map(t => t.id))}>Select All</button>
+              <button type="button" className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setSelectedTeams([])}>Clear</button>
+            </div>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
             {teams.length === 0 ? (
               <p style={{ color: 'var(--secondary)' }}>No teams available. Add teams first.</p>
@@ -233,7 +521,7 @@ export default function SchedulePage() {
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ fontWeight: 600, margin: 0 }}>Scheduled Events</h3>
+          <h3 style={{ fontWeight: 600, margin: 0 }}>Scheduled Events ({schedules.length})</h3>
           <div style={{ display: 'flex', gap: '0.25rem' }}>
             <button 
               className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
@@ -254,7 +542,7 @@ export default function SchedulePage() {
         
         {schedules.length === 0 ? (
           <div className="empty-state">
-            <p>No schedules yet. Generate your first schedule above.</p>
+            <p>No schedules yet. Use Quick Add or Generate Schedule above.</p>
           </div>
         ) : viewMode === 'calendar' ? (
           <Calendar 
@@ -274,7 +562,7 @@ export default function SchedulePage() {
               </tr>
             </thead>
             <tbody>
-              {schedules.map(sched => (
+              {schedules.sort((a, b) => a.start_time - b.start_time).map(sched => (
                 <tr key={sched.id}>
                   <td>{formatDate(sched.start_time)}</td>
                   <td>
@@ -325,7 +613,7 @@ export default function SchedulePage() {
       </div>
 
       {/* Event Detail Modal */}
-      {selectedEvent && (
+      {selectedEvent && !editingEvent && (
         <div className="modal-overlay" onClick={() => setSelectedEvent(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <div className="modal-header">
@@ -368,21 +656,138 @@ export default function SchedulePage() {
                   <span className="badge badge-warning">Draft</span>
                 )}
               </div>
-              {selectedEvent.is_published === 1 && (
-                <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ flex: 1 }}
+                  onClick={() => startEdit(selectedEvent)}
+                >
+                  ✏️ Edit
+                </button>
+                {selectedEvent.is_published === 1 && (
                   <button 
                     className="btn btn-secondary" 
-                    style={{ width: '100%' }}
+                    style={{ flex: 1 }}
                     onClick={() => notifyParents(selectedEvent)}
                     disabled={notifying}
                   >
-                    {notifying ? 'Sending...' : '📧 Notify Parents'}
+                    {notifying ? 'Sending...' : '📧 Notify'}
                   </button>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginTop: '0.5rem', textAlign: 'center' }}>
-                    Send email notification to parents of affected players
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingEvent && (
+        <div className="modal-overlay" onClick={() => setEditingEvent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Event</h2>
+              <button className="modal-close" onClick={() => setEditingEvent(null)}>&times;</button>
+            </div>
+            <div style={{ padding: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">Title</label>
+                <input 
+                  type="text" 
+                  className="form-input"
+                  value={editForm.title}
+                  onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">Event Type</label>
+                <select 
+                  className="form-select"
+                  value={editForm.eventType}
+                  onChange={e => setEditForm(prev => ({ ...prev, eventType: e.target.value }))}
+                >
+                  <option value="practice">Practice</option>
+                  <option value="game">Game</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">Facility</label>
+                <select 
+                  className="form-select"
+                  value={editForm.facilityId}
+                  onChange={e => setEditForm(prev => ({ ...prev, facilityId: parseInt(e.target.value) }))}
+                >
+                  {facilities.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">Home Team</label>
+                <select 
+                  className="form-select"
+                  value={editForm.homeTeamId}
+                  onChange={e => setEditForm(prev => ({ ...prev, homeTeamId: parseInt(e.target.value) }))}
+                >
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">Away Team (optional)</label>
+                <select 
+                  className="form-select"
+                  value={editForm.awayTeamId ?? ''}
+                  onChange={e => setEditForm(prev => ({ ...prev, awayTeamId: e.target.value ? parseInt(e.target.value) : null }))}
+                >
+                  <option value="">None</option>
+                  {teams.filter(t => t.id !== editForm.homeTeamId).map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">Start Time</label>
+                <input 
+                  type="datetime-local" 
+                  className="form-input"
+                  value={editForm.startTime}
+                  onChange={e => setEditForm(prev => ({ ...prev, startTime: e.target.value }))}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">End Time</label>
+                <input 
+                  type="datetime-local" 
+                  className="form-input"
+                  value={editForm.endTime}
+                  onChange={e => setEditForm(prev => ({ ...prev, endTime: e.target.value }))}
+                />
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ flex: 1 }}
+                  onClick={saveEdit}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1 }}
+                  onClick={() => setEditingEvent(null)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>

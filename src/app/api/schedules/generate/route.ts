@@ -105,13 +105,49 @@ function hasMaxWeeklyConflict(schedules: any[], teamId: number, startTime: numbe
   return eventsThisWeek.length >= maxPerWeek;
 }
 
+// NEW: Check if coach has conflict with another team at same time
+function hasCoachConflict(dbData: any, teamId: number, startTime: number, endTime: number): boolean {
+  const team = (dbData.teams || []).find((t: any) => t.id === teamId);
+  if (!team || !team.coach_email) return false;
+  
+  // Find teams with same coach
+  const teamsWithSameCoach = (dbData.teams || []).filter((t: any) => 
+    t.id !== teamId && t.coach_email === team.coach_email
+  );
+  
+  if (teamsWithSameCoach.length === 0) return false;
+  
+  // Check if any of those teams have scheduled events at the same time
+  const coachTeamIds = teamsWithSameCoach.map((t: any) => t.id);
+  return (dbData.schedules || []).some((s: any) => {
+    if (!coachTeamIds.includes(s.home_team_id) && !coachTeamIds.includes(s.away_team_id)) return false;
+    const existingStart = s.start_time;
+    const existingEnd = s.end_time;
+    return (startTime < existingEnd && endTime > existingStart);
+  });
+}
+
+// NEW: Check balanced game distribution - avoid scheduling same teams repeatedly
+function hasRecentGameConflict(schedules: any[], homeTeamId: number, awayTeamId: number, startTime: number, daysThreshold: number = 14): boolean {
+  if (!awayTeamId) return false;
+  
+  const threshold = startTime - (daysThreshold * 24 * 60 * 60 * 1000);
+  const recentGames = schedules.filter((s: any) => 
+    s.start_time >= threshold &&
+    ((s.home_team_id === homeTeamId && s.away_team_id === awayTeamId) ||
+     (s.home_team_id === awayTeamId && s.away_team_id === homeTeamId))
+  );
+  
+  return recentGames.length > 0;
+}
+
 // Check if time slot is within preferred hours
 function isWithinPreferredHours(startTime: Date, preferredStartHour: number = 16, preferredEndHour: number = 21): boolean {
   const hour = startTime.getHours();
   return hour >= preferredStartHour && hour < preferredEndHour;
 }
 
-// Generate schedule slots with priority
+// Generate schedule slots with priority - ENHANCED
 function generateScheduleSlots(
   numEvents: number, 
   startHour: number = 16,
@@ -123,27 +159,32 @@ function generateScheduleSlots(
   startDate.setDate(startDate.getDate() + 1);
   startDate.setHours(0, 0, 0, 0);
   
-  // Saturday is preferred for youth sports, then Monday/Wednesday
-  const preferredDays = ['saturday', 'monday', 'wednesday'];
+  // Saturday is most preferred, then Sunday morning, then Mon/Wed evenings
+  const preferredDays = ['saturday', 'sunday', 'monday', 'wednesday'];
   
-  // Time preferences: earlier weekday evenings are better
-  const preferredHours = [16, 17, 18, 19, 20, 9, 10, 11, 8, 12];
+  // Time preferences: Saturday 9-12 is best, then weekday 4-7pm
+  const weekendHours = [9, 10, 11, 12, 13, 14];  // Saturday/Sunday mornings
+  const weekdayHours = [16, 17, 18, 19, 20, 15, 21]; // Weekday evenings (4-8pm preferred)
   
-  const maxAttempts = numEvents * 4;
+  const maxAttempts = numEvents * 6;
   let dayOffset = 0;
   
-  while (slots.length < maxAttempts && dayOffset < 45) {
+  while (slots.length < maxAttempts && dayOffset < 60) {
     const checkDate = new Date(startDate);
     checkDate.setDate(checkDate.getDate() + dayOffset);
     dayOffset++;
     
     const dayName = getDayName(checkDate);
     const isPreferredDay = preferredDays.includes(dayName);
+    const isWeekendDay = isWeekend(checkDate);
+    const isSaturday = dayName === 'saturday';
     
     // Skip Friday evenings (less available)
     if (dayName === 'friday') continue;
     
-    for (const hour of preferredHours) {
+    const hours = isWeekendDay ? weekendHours : weekdayHours;
+    
+    for (const hour of hours) {
       if (slots.length >= maxAttempts) break;
       
       const slotDate = new Date(checkDate);
@@ -152,17 +193,26 @@ function generateScheduleSlots(
       endDate.setHours(endDate.getHours() + durationHours);
       
       let priority = 1;
-      if (isPreferredDay) priority += 2;
-      if (isWeekend(checkDate)) {
-        priority += hour >= 9 && hour <= 14 ? 3 : 0; // morning/early afternoon on weekends
-      } else {
-        priority += hour >= 16 && hour <= 19 ? 2 : 0; // prime evening slots
+      
+      // Saturday morning slots get highest priority
+      if (isSaturday && hour >= 9 && hour <= 12) {
+        priority += 5;
+      } else if (isWeekendDay) {
+        priority += 3;
+      } else if (isPreferredDay) {
+        priority += 2;
+      }
+      
+      // Prime time slots
+      if (!isWeekendDay && hour >= 16 && hour <= 19) {
+        priority += 2;
       }
       
       slots.push({ start: slotDate, end: endDate, priority });
     }
   }
   
+  // Sort by priority (highest first), then by date
   slots.sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
     return a.start.getTime() - b.start.getTime();
@@ -232,44 +282,70 @@ export async function POST(request: NextRequest) {
       const homeTeamId = validTeams[homeTeamIdx];
       const awayTeamId = awayTeamIdx !== null ? validTeams[awayTeamIdx] : null;
       
-      // Check conflicts
+      // Check conflicts - with better error messages
+      
+      // Facility conflict
       if (hasTimeConflict(data.schedules, facilityId, startTime, endTime)) {
         conflicts++;
-        conflictReasons.push(`Facility conflict at ${slot.start.toLocaleString()}`);
+        conflictReasons.push(`Facility in use at ${slot.start.toLocaleString()}`);
         continue;
       }
       
+      // Team conflicts
       const team1Conflict = homeTeamId ? hasTeamConflict(data.schedules, homeTeamId, startTime, endTime) : false;
       const team2Conflict = awayTeamId ? hasTeamConflict(data.schedules, awayTeamId, startTime, endTime) : false;
       
       if (team1Conflict || team2Conflict) {
         conflicts++;
-        conflictReasons.push(`Team conflict at ${slot.start.toLocaleString()}`);
+        conflictReasons.push(`Team already scheduled at ${slot.start.toLocaleString()}`);
         continue;
       }
       
+      // Rest day conflicts
       const restDay1Conflict = homeTeamId ? hasRestDayConflict(data.schedules, homeTeamId, startTime) : false;
       const restDay2Conflict = awayTeamId ? hasRestDayConflict(data.schedules, awayTeamId, startTime) : false;
       
       if (restDay1Conflict || restDay2Conflict) {
         conflicts++;
-        conflictReasons.push(`Rest day conflict at ${slot.start.toLocaleString()}`);
+        conflictReasons.push(`Insufficient rest time at ${slot.start.toLocaleString()}`);
         continue;
       }
       
+      // Weekly max conflicts
       const weekly1Conflict = homeTeamId ? hasMaxWeeklyConflict(data.schedules, homeTeamId, startTime, 3) : false;
       const weekly2Conflict = awayTeamId ? hasMaxWeeklyConflict(data.schedules, awayTeamId, startTime, 3) : false;
       
       if (weekly1Conflict || weekly2Conflict) {
         conflicts++;
-        conflictReasons.push(`Max weekly at ${slot.start.toLocaleString()}`);
+        conflictReasons.push(`Max weekly events reached at ${slot.start.toLocaleString()}`);
         continue;
       }
       
+      // Facility availability
       if (!isFacilityAvailable(data, facility, slot.start)) {
         conflicts++;
-        conflictReasons.push(`Facility unavailable at ${slot.start.toLocaleString()}`);
+        conflictReasons.push(`Facility closed at ${slot.start.toLocaleString()}`);
         continue;
+      }
+      
+      // NEW: Coach conflicts
+      const coach1Conflict = homeTeamId ? hasCoachConflict(data, homeTeamId, startTime, endTime) : false;
+      const coach2Conflict = awayTeamId ? hasCoachConflict(data, awayTeamId, startTime, endTime) : false;
+      
+      if (coach1Conflict || coach2Conflict) {
+        conflicts++;
+        conflictReasons.push(`Coach conflict at ${slot.start.toLocaleString()}`);
+        continue;
+      }
+      
+      // NEW: Recent game balance (for games only)
+      if (eventType === 'game' && awayTeamId) {
+        const recentGameConflict = hasRecentGameConflict(data.schedules, homeTeamId, awayTeamId, startTime);
+        if (recentGameConflict) {
+          conflicts++;
+          conflictReasons.push(`Teams played recently at ${slot.start.toLocaleString()}`);
+          continue;
+        }
       }
       
       const maxId = data.schedules.reduce((max: number, s: any) => Math.max(max, s.id), 0) || 0;
