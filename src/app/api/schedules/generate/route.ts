@@ -81,6 +81,12 @@ function hasRestDayConflict(schedules: any[], teamId: number, startTime: number)
   return daysBetween < 1;
 }
 
+// Check if time slot is within preferred hours from settings
+function isWithinPreferredHours(startTime: Date, preferredStartHour: number = 16, preferredEndHour: number = 21): boolean {
+  const hour = startTime.getHours();
+  return hour >= preferredStartHour && hour < preferredEndHour;
+}
+
 function generateScheduleSlots(numEvents: number, startHour: number = 16) {
   const slots: { start: Date; end: Date }[] = [];
   const startDate = new Date();
@@ -171,6 +177,21 @@ export async function POST(request: NextRequest) {
       const restDay2Conflict = awayTeamId ? hasRestDayConflict(data.schedules, awayTeamId, startTime) : false;
       
       if (restDay1Conflict || restDay2Conflict) {
+        conflicts++;
+        continue;
+      }
+      
+      // Check preferred hours from settings (default 4pm-9pm)
+      const settings = data.preferences || [];
+      const startHourSetting = settings.find((p: any) => p.key === 'weekday_evening_start')?.value || '16';
+      const endHourSetting = settings.find((p: any) => p.key === 'weekday_evening_end')?.value || '21';
+      
+      const prefStartHour = parseInt(startHourSetting.split(':')[0]);
+      const prefEndHour = parseInt(endHourSetting.split(':')[0]);
+      
+      const withinHours = isWithinPreferredHours(slot.start, prefStartHour, prefEndHour);
+      
+      if (!withinHours) {
         conflicts++;
         continue;
       }
