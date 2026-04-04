@@ -1,0 +1,244 @@
+{
+  "facilities": [
+    {
+      "id": 1,
+      "name": "Apple Valley High School Field",
+      "address": "100 Apple Valley Rd, Apple Valley, MN",
+      "capacity": 100,
+      "surface_type": "grass",
+      "has_lighting": 1,
+      "notes": null,
+      "created_at": 1775088957906,
+      "updated_at": 1775088957906
+    },
+    {
+      "id": 2,
+      "name": "Galaxie Sports Complex",
+      "address": "1500 Galaxie Ave, Apple Valley, MN",
+      "capacity": 200,
+      "surface_type": "turf",
+      "has_lighting": 1,
+      "notes": null,
+      "created_at": 1775088957906,
+      "updated_at": 1775088957906
+    },
+    {
+      "id": 3,
+      "name": "Memorial Park Court",
+      "address": "200 Main St, Lakeville, MN",
+      "capacity": 50,
+      "surface_type": "hardwood",
+      "has_lighting": 0,
+      "notes": null,
+      "created_at": 1775088957906,
+      "updated_at": 1775088957906
+    }
+  ],
+  "availabilityRules": [
+    {
+      "id": 1,
+      "facility_id": 1,
+      "day_of_week": "saturday",
+      "start_time": "08:00",
+      "end_time": "15:00",
+      "is_active": 1
+    }
+  ],
+  "teams": [
+    {
+      "id": 1,
+      "name": "Apple Valley U10 Blue",
+      "age_group": "U10",
+      "division": "Blue",
+      "sport": "Soccer",
+      "coach_name": "Mike Johnson",
+      "coach_email": "mike@email.com",
+      "coach_phone": "612-555-0101",
+      "created_at": 1775088957906,
+      "updated_at": 1775088957906
+    },
+    {
+      "id": 2,
+      "name": "Apple Valley U10 Red",
+      "age_group": "U10",
+      "division": "Red",
+      "sport": "Soccer",
+      "coach_name": "Sarah Smith",
+      "coach_email": "sarah@email.com",
+      "coach_phone": "612-555-0102",
+      "created_at": 1775088957906,
+      "updated_at": 1775088957906
+    },
+    {
+      "id": 3,
+      "name": "Test Team",
+      "age_group": "U12",
+      "division": "Green",
+      "sport": "Basketball",
+      "coach_name": "Test Coach",
+      "coach_email": "test@test.com",
+      "coach_phone": "555-1234",
+      "created_at": 1775091493272,
+      "updated_at": 1775091493272
+    }
+  ],
+  "players": [
+    {
+      "id": 1,
+      "team_id": 3,
+      "first_name": "Johnny",
+      "last_name": "Test",
+      "parent_name": "Parent Test",
+      "parent_email": "parent@test.com",
+      "parent_phone": "555-9999",
+      "created_at": 1775091498440
+    },
+    {
+      "id": 2,
+      "team_id": 1,
+      "first_name": "Test",
+      "last_name": "Player",
+      "parent_name": null,
+      "parent_email": null,
+      "parent_phone": null,
+      "created_at": 1775099937742
+    }
+  ],
+  "schedules": [
+    {
+      "id": 1,
+      "facility_id": 1,
+      "home_team_id": 1,
+      "away_team_id": null,
+      "event_type": "practice",
+      "title": "Practice 1",
+      "start_time": 1775318400000,
+      "end_time": 1775322000000,
+      "is_published": 1,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775088970910,
+      "updated_at": 1775088974735
+    },
+    {
+      "id": 3,
+      "facility_id": 1,
+      "home_team_id": 2,
+      "away_team_id": null,
+      "event_type": "practice",
+      "title": "Practice 2",
+      "start_time": 1775494800000,
+      "end_time": 1775498400000,
+      "is_published": 0,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775088970910,
+      "updated_at": 1775088970910
+    },
+    {
+      "id": 4,
+      "facility_id": 1,
+      "home_team_id": 1,
+      "away_team_id": null,
+      "event_type": "practice",
+      "title": "Practice: Apple Valley U10 Blue",
+      "start_time": 1775408400000,
+      "end_time": 1775412000000,
+      "is_published": 0,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775101370106,
+      "updated_at": 1775101370106
+    },
+    {
+      "id": 5,
+      "facility_id": 1,
+      "home_team_id": 1,
+      "away_team_id": null,
+      "event_type": "practice",
+      "title": "Practice: Apple Valley U10 Blue",
+      "start_time": 1775293200000,
+      "end_time": 1775296800000,
+      "is_published": 0,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775101723016,
+      "updated_at": 1775101723016
+    },
+    {
+      "id": 6,
+      "facility_id": 1,
+      "home_team_id": 2,
+      "away_team_id": null,
+      "event_type": "practice",
+      "title": "Practice: Apple Valley U10 Red",
+      "start_time": 1775296800000,
+      "end_time": 1775300400000,
+      "is_published": 0,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775101723016,
+      "updated_at": 1775101723016
+    },
+    {
+      "id": 7,
+      "facility_id": 2,
+      "home_team_id": 3,
+      "away_team_id": null,
+      "event_type": "practice",
+      "title": "Practice: Test Team",
+      "start_time": 1775293200000,
+      "end_time": 1775296800000,
+      "is_published": 0,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775101724731,
+      "updated_at": 1775101724731
+    },
+    {
+      "id": 8,
+      "facility_id": 3,
+      "home_team_id": 1,
+      "away_team_id": 2,
+      "event_type": "game",
+      "title": "Game: Apple Valley U10 Blue vs Apple Valley U10 Red",
+      "start_time": 1775322000000,
+      "end_time": 1775325600000,
+      "is_published": 0,
+      "has_conflict": 0,
+      "conflict_reason": null,
+      "created_at": 1775101832806,
+      "updated_at": 1775101832806
+    }
+  ],
+  "preferences": [
+    {
+      "key": "weekday_evening_start",
+      "value": "16:00"
+    },
+    {
+      "key": "weekday_evening_end",
+      "value": "21:00"
+    },
+    {
+      "key": "rest_days_required",
+      "value": "1"
+    }
+  ],
+  "nextId": {
+    "facilities": 1,
+    "teams": 1,
+    "schedules": 1,
+    "preferences": 1
+  },
+  "coaches": [
+    {
+      "id": 1,
+      "team_id": 1,
+      "name": "Coach Mike",
+      "email": "mike.coach@email.com",
+      "phone": "612-555-1111",
+      "created_at": 1775099926951
+    }
+  ]
+}
