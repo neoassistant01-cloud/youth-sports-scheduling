@@ -644,6 +644,46 @@
             </select>
           </div>
         `;
+      } else if (type === 'edit-team') {
+        title.textContent = 'Edit Team';
+        form.innerHTML = `
+          <input type="hidden" name="id" value="${data.editId}">
+          <div class="form-group">
+            <label>Team Name</label>
+            <input type="text" name="name" required value="${data.editData.name || ''}">
+          </div>
+          <div class="form-group">
+            <label>Sport</label>
+            <select name="sport">
+              <option value="Soccer" ${data.editData.sport === 'Soccer' ? 'selected' : ''}>Soccer</option>
+              <option value="Basketball" ${data.editData.sport === 'Basketball' ? 'selected' : ''}>Basketball</option>
+              <option value="Baseball" ${data.editData.sport === 'Baseball' ? 'selected' : ''}>Baseball</option>
+              <option value="Football" ${data.editData.sport === 'Football' ? 'selected' : ''}>Football</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Division</label>
+            <select name="division">
+              <option value="U8" ${data.editData.division === 'U8' ? 'selected' : ''}>U8</option>
+              <option value="U10" ${data.editData.division === 'U10' ? 'selected' : ''}>U10</option>
+              <option value="U12" ${data.editData.division === 'U12' ? 'selected' : ''}>U12</option>
+              <option value="U14" ${data.editData.division === 'U14' ? 'selected' : ''}>U14</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Coach</label>
+            <select name="coach">
+              <option value="">-- Select Coach --</option>
+              ${data.coaches.map(c => `<option value="${c.id}" ${data.editData.coach === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Players</label>
+            <div class="checkbox-group">
+              ${data.players.map(p => `<div class="checkbox-item"><input type="checkbox" id="player-${p.id}" name="players" value="${p.id}" ${data.editData.players?.includes(p.id) ? 'checked' : ''}><label for="player-${p.id}">${p.name}</label></div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">No players available</p>'}
+            </div>
+          </div>
+        `;
       }
       
       form.addEventListener('submit', handleFormSubmit);
@@ -671,6 +711,12 @@
       } else if (currentModalType === 'edit-coach') {
         const idx = data.coaches.findIndex(c => c.id === obj.id);
         if (idx !== -1) data.coaches[idx] = { ...data.coaches[idx], ...obj };
+      } else if (currentModalType === 'edit-team') {
+        const selectedPlayers = formData.getAll('players');
+        const idx = data.teams.findIndex(t => t.id === obj.id);
+        if (idx !== -1) {
+          data.teams[idx] = { ...data.teams[idx], name: obj.name, sport: obj.sport, division: obj.division, coach: obj.coach, players: selectedPlayers };
+        }
       }
       
       saveData();
@@ -747,6 +793,7 @@
               ${coach ? `<br><strong>Coach:</strong> ${coach.name}` : ''}
             </div>
             <div style="margin-top:16px;display:flex;gap:8px;">
+              <button class="btn btn-secondary" style="padding:6px 12px;font-size:11px;" onclick="editItem('team','${t.id}')">Edit</button>
               <button class="btn btn-danger" onclick="deleteItem('team','${t.id}')">Delete</button>
             </div>
           </div>
@@ -793,6 +840,11 @@
         data.editId = id;
         data.editData = c;
         openModal('edit-coach');
+      } else if (type === 'team') {
+        const t = data.teams.find(x => x.id === id);
+        data.editId = id;
+        data.editData = t;
+        openModal('edit-team');
       }
     }
     
