@@ -1,17 +1,3 @@
 [build]
-  command = "npm run build"
-  publish = ".next"
-  functions = ".next/serverless"
-
-[build.environment]
-  NODE_VERSION = "20"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
-[[redirects]]
-  from = "/_next/static/:path"
-  to = "/_next/static/:path"
-  status = 200
+  command = "echo 'Static site - no build needed'"
+  publish = "dist"
